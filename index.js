@@ -25,7 +25,7 @@ app.post("/minio-events", async (req, res) => {
             // Leggi JSON da MinIO
             const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
             const s3 = new S3Client({
-                endpoint: process.env.MINIO_ENDPOINT || "http://localhost:9000",
+                endpoint: process.env.MINIO_ENDPOINT || "https://minio-hfis.onrender.com", // MinIO online
                 region: process.env.MINIO_REGION || "us-east-1",
                 credentials: {
                     accessKeyId: process.env.MINIO_ACCESS_KEY || "minio",
@@ -33,6 +33,7 @@ app.post("/minio-events", async (req, res) => {
                 },
                 forcePathStyle: true,
             });
+
 
             const data = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
             const body = await data.Body.transformToString();
