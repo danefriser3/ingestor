@@ -1,0 +1,79 @@
+import express from "express";
+import pool from "./db.js";
+
+const app = express();
+app.use(express.json({ type: "*/*" }));
+
+app.post("/minio-events", async (req, res) => {
+    try {
+        const records = req.body?.Records || [];
+        for (const record of records) {
+            const bucket = record.s3.bucket.name;
+            const key = decodeURIComponent(record.s3.object.key);
+
+            console.log("📦 Evento MinIO ricevuto:", bucket, key);
+
+            // Leggi JSON da MinIO
+            const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+            const s3 = new S3Client({
+                endpoint: "http://localhost:9000", // se docker-compose usa service name
+                region: "us-east-1",
+                credentials: { accessKeyId: "minio", secretAccessKey: "miniopass" },
+                forcePathStyle: true
+            });
+
+            const data = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+            const body = await data.Body.transformToString();
+            const products = JSON.parse(body);
+            console.log(`📄 Letti ${products.length} prodotti da ${key}`);
+
+            // Inserisci i prodotti nel DB
+            if (products.length > 0) {
+                const values = [];
+                const placeholders = [];
+
+                products.forEach((p, i) => {
+                    // i è l'indice del prodotto
+                    // ogni riga ha 7 colonne: name, price, brand, sku, currency, source, category
+                    placeholders.push(`($${i * 7 + 1}, $${i * 7 + 2}, $${i * 7 + 3}, $${i * 7 + 4}, $${i * 7 + 5}, $${i * 7 + 6}, $${i * 7 + 7})`);
+                    values.push(
+                        p.name || null,
+                        p.price || null,
+                        p.brand || null,
+                        p.sku || null,
+                        p.currency || null,
+                        p.source || null,
+                        p.category || null
+                    );
+                    console.log(`   - Inserisco prodotto: ${p.name} - ${p.price} ${p.currency || ""}`);
+                });
+
+                const query = `
+        TRUNCATE TABLE products RESTART IDENTITY;
+    `;
+
+                await pool.query(query);
+
+                const query1 = `
+        INSERT INTO products (name, price, brand, sku, currency, source, category)
+        VALUES ${placeholders.join(", ")}
+        ON CONFLICT (sku, source) DO NOTHING
+    `;
+
+                await pool.query(query1, values);
+                console.log(`✅ Inseriti ${products.length} prodotti nel DB`);
+            }
+
+            console.log(`✅ Salvati ${products.length} prodotti nel DB`);
+        }
+
+        res.sendStatus(200);
+    } catch (err) {
+        console.error("Errore ingestor:", err);
+        res.sendStatus(500);
+    }
+});
+
+app.listen(4000, () => {
+    console.log("🚀 Ingestor in ascolto su http://0.0.0.0:4000/minio-events");
+});
