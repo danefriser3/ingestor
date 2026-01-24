@@ -4,6 +4,15 @@ import pool from "./db.js";
 const app = express();
 app.use(express.json({ type: "*/*" }));
 
+// Simple health endpoints for Railway/Nixpacks
+app.get("/", (req, res) => {
+    res.status(200).send("OK");
+});
+
+app.get("/health", (req, res) => {
+    res.status(200).json({ status: "ok", uptime: process.uptime() });
+});
+
 app.post("/minio-events", async (req, res) => {
     try {
         const records = req.body?.Records || [];
@@ -79,6 +88,26 @@ app.post("/minio-events", async (req, res) => {
 
 const PORT = process.env.PORT || 4000;
 const HOST = "0.0.0.0";
-app.listen(PORT, HOST, () => {
-    console.log(`🚀 Ingestor in ascolto su http://${HOST}:${PORT}/minio-events`);
+const server = app.listen(PORT, HOST, () => {
+    console.log(`🚀 Ingestor in ascolto su http://${HOST}:${PORT}`);
 });
+
+// Graceful shutdown for Railway
+const shutdown = (signal) => {
+    console.log(`\nReceived ${signal}, shutting down...`);
+    server.close(() => {
+        console.log("HTTP server closed");
+        try {
+            pool.end().then(() => {
+                console.log("DB pool closed");
+                process.exit(0);
+            });
+        } catch (e) {
+            console.error("Error closing DB pool", e);
+            process.exit(1);
+        }
+    });
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
