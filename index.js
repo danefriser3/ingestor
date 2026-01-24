@@ -13,6 +13,33 @@ app.get("/health", (req, res) => {
     res.status(200).json({ status: "ok", uptime: process.uptime() });
 });
 
+// Utility to return brief, concise error messages
+const briefErrorMessage = (err) => {
+    const code = err?.code;
+    switch (code) {
+        case "ECONNREFUSED":
+            return "Servizio non raggiungibile";
+        case "ETIMEDOUT":
+            return "Connessione scaduta";
+        case "EHOSTUNREACH":
+            return "Host non raggiungibile";
+        case "ENOTFOUND":
+            return "Indirizzo non trovato";
+        case "EAI_AGAIN":
+            return "DNS non disponibile";
+        default:
+            return "Errore";
+    }
+};
+
+// Extract a readable original error message (short, no noisy JSON)
+const readableErrorMessage = (err) => {
+    const raw = err?.message || err?.toString?.() || "";
+    const msg = typeof raw === "string" ? raw : "";
+    // Trim very long messages to keep response concise
+    return msg.length > 300 ? msg.slice(0, 300) + "…" : msg || "";
+};
+
 app.post("/minio-events", async (req, res) => {
     try {
         const records = req.body?.Records || [];
@@ -58,7 +85,6 @@ app.post("/minio-events", async (req, res) => {
                         p.source || null,
                         p.category || null
                     );
-                    console.log(`   - Inserisco prodotto: ${p.name} - ${p.price} ${p.currency || ""}`);
                 });
 
                 const query = `
@@ -83,7 +109,13 @@ app.post("/minio-events", async (req, res) => {
         res.sendStatus(200);
     } catch (err) {
         console.error("Errore ingestor:", err);
-        res.sendStatus(500);
+        const connErrors = ["ECONNREFUSED", "ETIMEDOUT", "EHOSTUNREACH", "ENOTFOUND", "EAI_AGAIN"];
+        const status = connErrors.includes(err?.code) ? 502 : 500;
+        res.status(status).json({
+            error: briefErrorMessage(err),
+            message: readableErrorMessage(err),
+            code: err?.code || err?.name || undefined,
+        });
     }
 });
 
