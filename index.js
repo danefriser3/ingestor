@@ -67,7 +67,7 @@ app.post("/minio-events", async (req, res) => {
                 await pool.query(query);
 
                 const query1 = `
-        INSERT INTO products (name, price, brand, sku, currency, source, category, inserted_at)
+        INSERT INTO products (name, price, brand, sku, currency, source, category)
         VALUES ${placeholders.join(", ")}
         ON CONFLICT (sku, source) DO NOTHING
     `;
