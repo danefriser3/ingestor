@@ -43,11 +43,11 @@ app.post("/minio-events", async (req, res) => {
             if (products.length > 0) {
                 const values = [];
                 const placeholders = [];
-
+                const date = new Date().toLocaleString("it-IT", { timeZone: "Europe/Rome" });
                 products.forEach((p, i) => {
                     // i è l'indice del prodotto
-                    // ogni riga ha 7 colonne: name, price, brand, sku, currency, source, category
-                    placeholders.push(`($${i * 7 + 1}, $${i * 7 + 2}, $${i * 7 + 3}, $${i * 7 + 4}, $${i * 7 + 5}, $${i * 7 + 6}, $${i * 7 + 7})`);
+                    // ogni riga ha 8 colonne: name, price, brand, sku, currency, source, category, inserted_at
+                    placeholders.push(`($${i * 8 + 1}, $${i * 8 + 2}, $${i * 8 + 3}, $${i * 8 + 4}, $${i * 8 + 5}, $${i * 8 + 6}, $${i * 8 + 7}, $${i * 8 + 8})`);
                     values.push(
                         p.name || null,
                         p.price || null,
@@ -55,7 +55,8 @@ app.post("/minio-events", async (req, res) => {
                         p.sku || null,
                         p.currency || null,
                         p.source || null,
-                        p.category || null
+                        p.category || null,
+                        date
                     );
                     console.log(`   - Inserisco prodotto: ${p.name} - ${p.price} ${p.currency || ""}`);
                 });
@@ -67,7 +68,7 @@ app.post("/minio-events", async (req, res) => {
                 await pool.query(query);
 
                 const query1 = `
-        INSERT INTO products (name, price, brand, sku, currency, source, category)
+        INSERT INTO products (name, price, brand, sku, currency, source, category, inserted_at)
         VALUES ${placeholders.join(", ")}
         ON CONFLICT (sku, source) DO NOTHING
     `;
