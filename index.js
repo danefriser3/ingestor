@@ -16,10 +16,13 @@ app.post("/minio-events", async (req, res) => {
             // Leggi JSON da MinIO
             const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
             const s3 = new S3Client({
-                endpoint: "http://localhost:9000", // se docker-compose usa service name
-                region: "us-east-1",
-                credentials: { accessKeyId: "minio", secretAccessKey: "miniopass" },
-                forcePathStyle: true
+                endpoint: process.env.MINIO_ENDPOINT || "http://localhost:9000",
+                region: process.env.MINIO_REGION || "us-east-1",
+                credentials: {
+                    accessKeyId: process.env.MINIO_ACCESS_KEY || "minio",
+                    secretAccessKey: process.env.MINIO_SECRET_KEY || "miniopass",
+                },
+                forcePathStyle: true,
             });
 
             const data = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -74,6 +77,8 @@ app.post("/minio-events", async (req, res) => {
     }
 });
 
-app.listen(4000, () => {
-    console.log("🚀 Ingestor in ascolto su http://0.0.0.0:4000/minio-events");
+const PORT = process.env.PORT || 4000;
+const HOST = "0.0.0.0";
+app.listen(PORT, HOST, () => {
+    console.log(`🚀 Ingestor in ascolto su http://${HOST}:${PORT}/minio-events`);
 });
