@@ -66,12 +66,38 @@ app.post("/minio-events", async (req, res) => {
 
             // Inserisci i prodotti nel DB
             if (products.length > 0) {
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                const currentHour = now.getHours();
+                
+                // Determina quale slot orario dovrebbe essere usato
+                let targetHour;
+                if (currentHour >= 21) targetHour = 21;
+                else if (currentHour >= 15) targetHour = 15;
+                else if (currentHour >= 9) targetHour = 9;
+                else targetHour = null;
+                
+                if (!targetHour) {
+                    console.log(`⏭️ Fuori orario di esecuzione (9, 15, 21)`);
+                    continue;
+                }
+
+                // Controlla se esistono già dati per oggi e questo slot orario
+                const checkQuery = `
+                    SELECT COUNT(*) as count 
+                    FROM products 
+                    WHERE DATE(created_at) = CURRENT_DATE AND EXTRACT(hour FROM created_at) = $1
+                `;
+                const checkResult = await pool.query(checkQuery, [targetHour]);
+                
+                if (checkResult.rows[0].count > 0) {
+                    console.log(`⏭️ Dati già presenti per oggi ${today} alle ore ${targetHour}`);
+                    continue;
+                }
+
                 const values = [];
                 const placeholders = [];
-                const date = new Date().toLocaleString("it-IT", { timeZone: "Europe/Rome" });
                 products.forEach((p, i) => {
-                    // i è l'indice del prodotto
-                    // ogni riga ha 8 colonne: name, price, brand, sku, currency, source, category, image
                     placeholders.push(`($${i * 8 + 1}, $${i * 8 + 2}, $${i * 8 + 3}, $${i * 8 + 4}, $${i * 8 + 5}, $${i * 8 + 6}, $${i * 8 + 7}, $${i * 8 + 8})`);
                     values.push(
                         p.name || null,
@@ -85,20 +111,13 @@ app.post("/minio-events", async (req, res) => {
                     );
                 });
 
-                const query = `
-        TRUNCATE TABLE products RESTART IDENTITY;
-    `;
-
-                await pool.query(query);
-
-                const query1 = `
-        INSERT INTO products (name, price, brand, sku, currency, source, category, image)
-        VALUES ${placeholders.join(", ")}
-        ON CONFLICT (sku, source) DO NOTHING
-    `;
-
-                await pool.query(query1, values);
-                console.log(`✅ Inseriti ${products.length} prodotti nel DB`);
+                await pool.query(`TRUNCATE TABLE products RESTART IDENTITY`);
+                await pool.query(`
+                    INSERT INTO products (name, price, brand, sku, currency, source, category, image)
+                    VALUES ${placeholders.join(", ")}
+                    ON CONFLICT (sku, source) DO NOTHING
+                `, values);
+                console.log(`✅ Inseriti ${products.length} prodotti nel DB per ${today} ore ${currentHour}`);
             }
 
             console.log(`✅ Salvati ${products.length} prodotti nel DB`);
